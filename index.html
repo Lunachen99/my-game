@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BallBounce | 圆弧击碎</title>
+    <style>
+      :root {
+        --bg-0: #060816;
+        --bg-1: #0d1330;
+        --panel: rgba(13, 19, 48, 0.66);
+        --panel-border: rgba(149, 173, 255, 0.22);
+        --text-main: #eef3ff;
+        --text-soft: #96a8d6;
+        --accent: #6af2ff;
+        --danger: #ff7b9d;
+        --shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 20% 20%, rgba(106, 242, 255, 0.15), transparent 28%),
+          radial-gradient(circle at 80% 0%, rgba(255, 123, 157, 0.12), transparent 26%),
+          linear-gradient(135deg, var(--bg-0), var(--bg-1));
+        color: var(--text-main);
+        font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+        background-size: 48px 48px;
+        mask-image: radial-gradient(circle at center, black 40%, transparent 85%);
+      }
+
+      .shell {
+        position: relative;
+        min-height: 100%;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      .stage {
+        position: relative;
+        width: min(920px, calc(100vw - 48px));
+        padding: 18px;
+        border-radius: 28px;
+        background: linear-gradient(180deg, rgba(17, 26, 58, 0.72), rgba(7, 11, 26, 0.82));
+        border: 1px solid var(--panel-border);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(18px);
+      }
+
+      .topbar {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+
+      .title-block h1 {
+        margin: 0;
+        letter-spacing: 0.08em;
+        font-size: 28px;
+        text-transform: uppercase;
+      }
+
+      .title-block p {
+        margin: 6px 0 0;
+        color: var(--text-soft);
+        font-size: 14px;
+      }
+
+      .hud {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(90px, 1fr));
+        gap: 10px;
+        min-width: min(440px, 100%);
+      }
+
+      .card {
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: var(--panel);
+        border: 1px solid rgba(133, 160, 255, 0.14);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      }
+
+      .card .label {
+        display: block;
+        color: var(--text-soft);
+        font-size: 12px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .card .value {
+        margin-top: 6px;
+        display: block;
+        font-size: 24px;
+        font-weight: 700;
+        font-family: Consolas, "Courier New", monospace;
+      }
+
+      .arena-frame {
+        position: relative;
+        border-radius: 24px;
+        overflow: hidden;
+        border: 1px solid rgba(146, 169, 255, 0.16);
+        background:
+          radial-gradient(circle at center, rgba(44, 85, 162, 0.18), transparent 52%),
+          linear-gradient(180deg, rgba(9, 14, 34, 0.9), rgba(3, 5, 15, 1));
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 3 / 2;
+      }
+
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .hint {
+        color: var(--text-soft);
+        font-size: 13px;
+      }
+
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .status {
+        padding: 8px 12px;
+        border-radius: 999px;
+        color: #dffcff;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        background: rgba(28, 56, 83, 0.7);
+        border: 1px solid rgba(106, 242, 255, 0.28);
+      }
+
+      .audio-button {
+        border: 1px solid rgba(148, 177, 255, 0.18);
+        border-radius: 999px;
+        padding: 8px 14px;
+        color: var(--text-main);
+        background: rgba(15, 23, 52, 0.74);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        transition:
+          transform 160ms ease,
+          background 160ms ease,
+          border-color 160ms ease,
+          box-shadow 160ms ease;
+      }
+
+      .audio-button:hover {
+        transform: translateY(-1px);
+        border-color: rgba(106, 242, 255, 0.42);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.22);
+      }
+
+      .audio-button.active {
+        background: rgba(18, 58, 74, 0.88);
+        border-color: rgba(106, 242, 255, 0.38);
+        box-shadow: inset 0 0 0 1px rgba(106, 242, 255, 0.14);
+      }
+
+      .overlay {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: rgba(4, 7, 18, 0.56);
+        backdrop-filter: blur(10px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms ease;
+      }
+
+      .overlay.visible {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .dialog {
+        width: min(360px, calc(100% - 32px));
+        padding: 26px;
+        border-radius: 22px;
+        text-align: center;
+        background: linear-gradient(180deg, rgba(13, 19, 48, 0.94), rgba(6, 9, 24, 0.96));
+        border: 1px solid rgba(255, 123, 157, 0.28);
+        box-shadow: 0 22px 70px rgba(0, 0, 0, 0.45);
+      }
+
+      .dialog h2 {
+        margin: 0;
+        font-size: 32px;
+        letter-spacing: 0.08em;
+      }
+
+      .dialog p {
+        margin: 10px 0 0;
+        color: var(--text-soft);
+        line-height: 1.6;
+      }
+
+      .restart {
+        margin-top: 20px;
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 22px;
+        color: #07111c;
+        background: linear-gradient(135deg, #6af2ff, #91ffca);
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 8px 24px rgba(106, 242, 255, 0.35);
+        transition:
+          transform 160ms ease,
+          box-shadow 160ms ease,
+          filter 160ms ease;
+      }
+
+      .restart:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 30px rgba(106, 242, 255, 0.45);
+        filter: brightness(1.05);
+      }
+
+      @media (max-width: 860px) {
+        .topbar,
+        .footer {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .hud {
+          min-width: 0;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <main class="stage">
+        <section class="topbar">
+          <div class="title-block">
+            <h1>BallBounce</h1>
+            <p>将鼠标移动到圆周任意方向，让圆环朝向鼠标并持续击碎边界、活过每一次缺口。</p>
+          </div>
+          <div class="hud" aria-label="游戏状态">
+            <div class="card">
+              <span class="label">得分</span>
+              <span class="value" id="scoreValue">0</span>
+            </div>
+            <div class="card">
+              <span class="label">关卡</span>
+              <span class="value" id="levelValue">1</span>
+            </div>
+            <div class="card">
+              <span class="label">速度</span>
+              <span class="value" id="speedValue">1.00x</span>
+            </div>
+            <div class="card">
+              <span class="label">剩余</span>
+              <span class="value" id="segmentsValue">4</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="arena-frame">
+          <canvas id="game" width="900" height="600" aria-label="圆弧击碎游戏画布"></canvas>
+          <div class="overlay visible" id="overlay">
+            <div class="dialog">
+              <h2 id="overlayTitle">准备开始</h2>
+              <p id="summaryText">移动鼠标调整圆环朝向，准备好后点击下方按钮开始游戏。</p>
+              <button class="restart" id="restartButton" type="button">开始游戏</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="footer">
+          <div class="hint">操作：将鼠标移动到圆周任意方向，圆环就会朝那个方向转动。点击“音乐”或“音效”可启用声音。</div>
+          <div class="controls">
+            <button class="audio-button" id="musicButton" type="button">音乐：开</button>
+            <button class="audio-button" id="sfxButton" type="button">音效：开</button>
+            <div class="status" id="statusChip">运行中</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      (() => {
+        const canvas = document.getElementById("game");
+        const ctx = canvas.getContext("2d");
+        const overlay = document.getElementById("overlay");
+        const restartButton = document.getElementById("restartButton");
+        const overlayTitle = document.getElementById("overlayTitle");
+        const scoreValue = document.getElementById("scoreValue");
+        const levelValue = document.getElementById("levelValue");
+        const speedValue = document.getElementById("speedValue");
+        const segmentsValue = document.getElementById("segmentsValue");
+        const summaryText = document.getElementById("summaryText");
+        const statusChip = document.getElementById("statusChip");
+        const musicButton = document.getElementById("musicButton");
+        const sfxButton = document.getElementById("sfxButton");
+
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+        const TAU = Math.PI * 2;
+        const center = { x: WIDTH * 0.5, y: HEIGHT * 0.52 };
+        const arenaRadius = 226;
+        const segmentGap = 0.11;
+        const colors = ["#6af2ff", "#9d7bff", "#ff7b9d", "#ffc857", "#82f7b8", "#ff9f6a"];
+        const initialVelocity = { vx: 2.6, vy: -2.2 };
+        const baseSpeed = Math.hypot(initialVelocity.vx, initialVelocity.vy);
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+
+        const state = {
+          score: 0,
+          level: 1,
+          segmentCount: 4,
+          rotation: 0,
+          targetRotation: 0,
+          status: "ready",
+          flash: 0,
+          particles: [],
+          ball: {
+            x: center.x - 36,
+            y: center.y + 22,
+            vx: initialVelocity.vx,
+            vy: initialVelocity.vy,
+            radius: 10
+          },
+          segments: []
+        };
+
+        const audioState = {
+          context: null,
+          masterGain: null,
+          musicGain: null,
+          sfxGain: null,
+          unlocked: false,
+          musicEnabled: true,
+          sfxEnabled: true,
+          noteIndex: 0,
+          nextNoteTime: 0,
+          melody: [
+            { root: 174.61, fifth: 261.63, accent: 392.0 },
+            { root: 196.0, fifth: 293.66, accent: 392.0 },
+            { root: 220.0, fifth: 329.63, accent: 440.0 },
+            { root: 196.0, fifth: 293.66, accent: 349.23 },
+            { root: 174.61, fifth: 261.63, accent: 329.63 },
+            { root: 246.94, fifth: 369.99, accent: 440.0 },
+            { root: 220.0, fifth: 329.63, accent: 392.0 },
+            { root: 196.0, fifth: 293.66, accent: 349.23 }
+          ]
+        };
+
+        function normalizeAngle(angle) {
+          return ((angle % TAU) + TAU) % TAU;
+        }
+
+        function shortestAngleDelta(from, to) {
+          let delta = (to - from) % TAU;
+          if (delta > Math.PI) delta -= TAU;
+          if (delta < -Math.PI) delta += TAU;
+          return delta;
+        }
+
+        function angleInSegment(angle, start, end) {
+          return angle >= start && angle <= end;
+        }
+
+        function getSpeed() {
+          return Math.hypot(state.ball.vx, state.ball.vy);
+        }
+
+        function updateAudioButtons() {
+          musicButton.textContent = `音乐：${audioState.musicEnabled ? "开" : "关"}`;
+          sfxButton.textContent = `音效：${audioState.sfxEnabled ? "开" : "关"}`;
+          musicButton.classList.toggle("active", audioState.musicEnabled);
+          sfxButton.classList.toggle("active", audioState.sfxEnabled);
+        }
+
+        function ensureAudio() {
+          if (!AudioContextClass) return null;
+          if (audioState.context) return audioState.context;
+
+          const context = new AudioContextClass();
+          const masterGain = context.createGain();
+          const musicGain = context.createGain();
+          const sfxGain = context.createGain();
+          const limiter = context.createDynamicsCompressor();
+
+          masterGain.gain.value = 0.72;
+          musicGain.gain.value = 0.18;
+          sfxGain.gain.value = 0.22;
+          limiter.threshold.value = -18;
+          limiter.knee.value = 18;
+          limiter.ratio.value = 3;
+
+          musicGain.connect(masterGain);
+          sfxGain.connect(masterGain);
+          masterGain.connect(limiter);
+          limiter.connect(context.destination);
+
+          audioState.context = context;
+          audioState.masterGain = masterGain;
+          audioState.musicGain = musicGain;
+          audioState.sfxGain = sfxGain;
+          audioState.nextNoteTime = context.currentTime + 0.08;
+          return context;
+        }
+
+        function unlockAudio() {
+          const context = ensureAudio();
+          if (!context) return;
+          if (context.state === "suspended") {
+            context.resume();
+          }
+          audioState.unlocked = true;
+          scheduleMusic();
+        }
+
+        function createEnvelope(gainNode, time, attack, sustain, release, peak) {
+          gainNode.gain.cancelScheduledValues(time);
+          gainNode.gain.setValueAtTime(0.0001, time);
+          gainNode.gain.linearRampToValueAtTime(peak, time + attack);
+          gainNode.gain.linearRampToValueAtTime(sustain, time + attack + release * 0.35);
+          gainNode.gain.exponentialRampToValueAtTime(0.0001, time + attack + release);
+        }
+
+        function playSfx(options) {
+          if (!audioState.sfxEnabled) return;
+          const context = ensureAudio();
+          if (!context || context.state !== "running") return;
+
+          const time = context.currentTime + (options.delay || 0);
+          const oscillator = context.createOscillator();
+          const gainNode = context.createGain();
+          const filter = context.createBiquadFilter();
+
+          oscillator.type = options.type || "triangle";
+          oscillator.frequency.setValueAtTime(options.startFrequency, time);
+          oscillator.frequency.exponentialRampToValueAtTime(
+            Math.max(40, options.endFrequency || options.startFrequency),
+            time + options.duration
+          );
+
+          filter.type = options.filterType || "lowpass";
+          filter.frequency.setValueAtTime(options.filterFrequency || 2200, time);
+          filter.Q.value = options.q || 0.6;
+
+          createEnvelope(
+            gainNode,
+            time,
+            options.attack || 0.01,
+            options.sustain || (options.volume || 0.16),
+            options.duration,
+            options.volume || 0.16
+          );
+
+          oscillator.connect(filter);
+          filter.connect(gainNode);
+          gainNode.connect(audioState.sfxGain);
+
+          oscillator.start(time);
+          oscillator.stop(time + options.duration + 0.03);
+        }
+
+        function playHitSound(segmentIndex) {
+          const step = segmentIndex % 6;
+          playSfx({
+            type: "triangle",
+            startFrequency: 320 + step * 32,
+            endFrequency: 180 + step * 22,
+            duration: 0.16,
+            volume: 0.12,
+            filterFrequency: 2600
+          });
+        }
+
+        function playLevelUpSound() {
+          playSfx({
+            type: "sine",
+            startFrequency: 440,
+            endFrequency: 660,
+            duration: 0.2,
+            volume: 0.14,
+            filterFrequency: 3200
+          });
+          playSfx({
+            type: "triangle",
+            startFrequency: 660,
+            endFrequency: 990,
+            duration: 0.26,
+            delay: 0.08,
+            volume: 0.13,
+            filterFrequency: 3600
+          });
+        }
+
+        function playGameOverSound() {
+          playSfx({
+            type: "sawtooth",
+            startFrequency: 230,
+            endFrequency: 72,
+            duration: 0.65,
+            volume: 0.14,
+            filterFrequency: 1200,
+            q: 2.2
+          });
+        }
+
+        function playRestartSound() {
+          playSfx({
+            type: "triangle",
+            startFrequency: 280,
+            endFrequency: 420,
+            duration: 0.18,
+            volume: 0.1,
+            filterFrequency: 2800
+          });
+        }
+
+        function scheduleMusicNote(time, note) {
+          const context = audioState.context;
+          if (!context) return;
+
+          const padA = context.createOscillator();
+          const padB = context.createOscillator();
+          const padGain = context.createGain();
+          const padFilter = context.createBiquadFilter();
+
+          padA.type = "sine";
+          padB.type = "triangle";
+          padA.frequency.setValueAtTime(note.root, time);
+          padB.frequency.setValueAtTime(note.fifth, time);
+          padFilter.type = "lowpass";
+          padFilter.frequency.setValueAtTime(1100, time);
+          createEnvelope(padGain, time, 0.08, 0.038, 0.78, 0.038);
+
+          padA.connect(padFilter);
+          padB.connect(padFilter);
+          padFilter.connect(padGain);
+          padGain.connect(audioState.musicGain);
+          padA.start(time);
+          padB.start(time);
+          padA.stop(time + 0.84);
+          padB.stop(time + 0.84);
+
+          const pluck = context.createOscillator();
+          const pluckGain = context.createGain();
+          pluck.type = "triangle";
+          pluck.frequency.setValueAtTime(note.accent, time + 0.02);
+          pluck.frequency.exponentialRampToValueAtTime(note.accent * 0.72, time + 0.24);
+          createEnvelope(pluckGain, time + 0.02, 0.01, 0.045, 0.28, 0.045);
+          pluck.connect(pluckGain);
+          pluckGain.connect(audioState.musicGain);
+          pluck.start(time + 0.02);
+          pluck.stop(time + 0.34);
+        }
+
+        function scheduleMusic() {
+          if (!audioState.musicEnabled || !audioState.unlocked || !audioState.context) return;
+          if (audioState.context.state !== "running") return;
+
+          const context = audioState.context;
+          const leadTime = 0.28;
+          const noteDuration = 0.54;
+
+          while (audioState.nextNoteTime < context.currentTime + leadTime) {
+            const note = audioState.melody[audioState.noteIndex % audioState.melody.length];
+            scheduleMusicNote(audioState.nextNoteTime, note);
+            audioState.nextNoteTime += noteDuration;
+            audioState.noteIndex += 1;
+          }
+        }
+
+        function buildSegments(count) {
+          const step = TAU / count;
+          state.segments = Array.from({ length: count }, (_, index) => {
+            const startAngle = index * step + segmentGap * 0.5;
+            const endAngle = (index + 1) * step - segmentGap * 0.5;
+            return {
+              index,
+              startAngle,
+              endAngle,
+              color: colors[index % colors.length],
+              active: true
+            };
+          });
+        }
+
+        function resetBall() {
+          state.ball.x = center.x - 36;
+          state.ball.y = center.y + 22;
+          state.ball.vx = initialVelocity.vx;
+          state.ball.vy = initialVelocity.vy;
+        }
+
+        function updateHud() {
+          scoreValue.textContent = String(state.score);
+          levelValue.textContent = String(state.level);
+          speedValue.textContent = `${(getSpeed() / baseSpeed).toFixed(2)}x`;
+          segmentsValue.textContent = String(state.segments.filter((segment) => segment.active).length);
+          if (state.status === "ready") {
+            statusChip.textContent = "待开始";
+            overlayTitle.textContent = "准备开始";
+            summaryText.textContent = "移动鼠标调整圆环朝向，准备好后点击下方按钮开始游戏。";
+            restartButton.textContent = "开始游戏";
+          } else if (state.status === "playing") {
+            statusChip.textContent = "运行中";
+            overlayTitle.textContent = "继续挑战";
+            summaryText.textContent = "保持节奏，别让小球从缺口飞出去。";
+            restartButton.textContent = "重新开始";
+          } else {
+            statusChip.textContent = "已结束";
+            overlayTitle.textContent = "Game Over";
+            summaryText.textContent = `最终得分 ${state.score}，停留在第 ${state.level} 关。点击按钮即可重开。`;
+            restartButton.textContent = "重新开始";
+          }
+        }
+
+        function spawnParticles(x, y, color) {
+          for (let i = 0; i < 14; i += 1) {
+            const angle = Math.random() * TAU;
+            const speed = 1.5 + Math.random() * 2.8;
+            state.particles.push({
+              x,
+              y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              life: 18 + Math.random() * 18,
+              color
+            });
+          }
+        }
+
+        function advanceLevel() {
+          state.level += 1;
+          state.segmentCount += 1;
+          buildSegments(state.segmentCount);
+          state.flash = 1.35;
+          playLevelUpSound();
+        }
+
+        function endGame() {
+          state.status = "gameover";
+          overlay.classList.add("visible");
+          playGameOverSound();
+          updateHud();
+        }
+
+        function startGame() {
+          unlockAudio();
+          state.status = "playing";
+          overlay.classList.remove("visible");
+          updateHud();
+        }
+
+        function restartGame() {
+          unlockAudio();
+          state.score = 0;
+          state.level = 1;
+          state.segmentCount = 4;
+          state.rotation = 0;
+          state.targetRotation = 0;
+          state.status = "playing";
+          state.flash = 0;
+          state.particles.length = 0;
+          buildSegments(state.segmentCount);
+          resetBall();
+          overlay.classList.remove("visible");
+          playRestartSound();
+          updateHud();
+        }
+
+        function updateParticles(stepScale) {
+          for (let i = state.particles.length - 1; i >= 0; i -= 1) {
+            const particle = state.particles[i];
+            particle.x += particle.vx * stepScale;
+            particle.y += particle.vy * stepScale;
+            particle.vx *= 0.987;
+            particle.vy *= 0.987;
+            particle.life -= stepScale;
+            if (particle.life <= 0) {
+              state.particles.splice(i, 1);
+            }
+          }
+        }
+
+        function bounceOnSegment(segment, nx, ny, distance) {
+          const normalX = nx / distance;
+          const normalY = ny / distance;
+          const outward = state.ball.vx * normalX + state.ball.vy * normalY;
+          const safeDot = outward <= 0 ? Math.abs(outward) : outward;
+
+          state.ball.vx -= 2 * safeDot * normalX;
+          state.ball.vy -= 2 * safeDot * normalY;
+          state.ball.vx *= 1.03;
+          state.ball.vy *= 1.03;
+          state.ball.x = center.x + normalX * (arenaRadius - state.ball.radius - 1.5);
+          state.ball.y = center.y + normalY * (arenaRadius - state.ball.radius - 1.5);
+
+          segment.active = false;
+          state.score += 1;
+          state.flash = 0.65;
+          playHitSound(segment.index);
+          spawnParticles(
+            center.x + normalX * arenaRadius,
+            center.y + normalY * arenaRadius,
+            segment.color
+          );
+
+          if (state.segments.every((item) => !item.active)) {
+            advanceLevel();
+          }
+
+          updateHud();
+        }
+
+        function updateBall(frameScale) {
+          const subSteps = Math.max(4, Math.ceil(getSpeed() * frameScale / 2.4));
+          const stepScale = frameScale / subSteps;
+
+          for (let step = 0; step < subSteps; step += 1) {
+            state.ball.x += state.ball.vx * stepScale;
+            state.ball.y += state.ball.vy * stepScale;
+
+            const nx = state.ball.x - center.x;
+            const ny = state.ball.y - center.y;
+            const distance = Math.hypot(nx, ny);
+            const collisionRadius = arenaRadius - state.ball.radius;
+
+            if (distance >= collisionRadius) {
+              const worldAngle = normalizeAngle(Math.atan2(ny, nx));
+              const localAngle = normalizeAngle(worldAngle - state.rotation);
+              const hitSegment = state.segments.find(
+                (segment) => segment.active && angleInSegment(localAngle, segment.startAngle, segment.endAngle)
+              );
+
+              if (hitSegment) {
+                bounceOnSegment(hitSegment, nx, ny, distance);
+              } else {
+                endGame();
+                return;
+              }
+            }
+          }
+        }
+
+        function renderBackground() {
+          ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+          const glow = ctx.createRadialGradient(center.x, center.y, 28, center.x, center.y, 420);
+          glow.addColorStop(0, "rgba(47, 132, 255, 0.20)");
+          glow.addColorStop(0.4, "rgba(20, 39, 96, 0.15)");
+          glow.addColorStop(1, "rgba(4, 8, 18, 0)");
+          ctx.fillStyle = glow;
+          ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+          ctx.save();
+          ctx.translate(center.x, center.y);
+          ctx.strokeStyle = "rgba(148, 170, 255, 0.12)";
+          ctx.lineWidth = 1;
+          for (let ring = 0; ring < 4; ring += 1) {
+            ctx.beginPath();
+            ctx.arc(0, 0, 90 + ring * 48, 0, TAU);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        function renderArena() {
+          ctx.save();
+          ctx.translate(center.x, center.y);
+
+          ctx.beginPath();
+          ctx.arc(0, 0, arenaRadius + 18, 0, TAU);
+          ctx.fillStyle = "rgba(82, 105, 194, 0.05)";
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(0, 0, arenaRadius, 0, TAU);
+          ctx.lineWidth = 20;
+          ctx.strokeStyle = "rgba(108, 126, 209, 0.12)";
+          ctx.stroke();
+
+          ctx.rotate(state.rotation);
+
+          ctx.lineWidth = 18;
+          ctx.lineCap = "round";
+          state.segments.forEach((segment) => {
+            if (!segment.active) return;
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = segment.color;
+            ctx.strokeStyle = segment.color;
+            ctx.beginPath();
+            ctx.arc(0, 0, arenaRadius, segment.startAngle, segment.endAngle);
+            ctx.stroke();
+          });
+
+          ctx.restore();
+
+          if (state.flash > 0) {
+            ctx.save();
+            ctx.globalAlpha = Math.min(0.18, state.flash * 0.16);
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, arenaRadius + 24, 0, TAU);
+            ctx.fillStyle = "#9fc2ff";
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+
+        function renderParticles() {
+          state.particles.forEach((particle) => {
+            ctx.save();
+            ctx.globalAlpha = Math.min(1, particle.life / 24);
+            ctx.fillStyle = particle.color;
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = particle.color;
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, 2.2, 0, TAU);
+            ctx.fill();
+            ctx.restore();
+          });
+        }
+
+        function renderBall() {
+          const trailAngle = Math.atan2(state.ball.vy, state.ball.vx);
+          const trailLength = 22;
+          const trail = ctx.createLinearGradient(
+            state.ball.x,
+            state.ball.y,
+            state.ball.x - Math.cos(trailAngle) * trailLength,
+            state.ball.y - Math.sin(trailAngle) * trailLength
+          );
+          trail.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+          trail.addColorStop(1, "rgba(106, 242, 255, 0)");
+
+          ctx.save();
+          ctx.strokeStyle = trail;
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.moveTo(state.ball.x, state.ball.y);
+          ctx.lineTo(
+            state.ball.x - Math.cos(trailAngle) * trailLength,
+            state.ball.y - Math.sin(trailAngle) * trailLength
+          );
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(state.ball.x, state.ball.y, state.ball.radius, 0, TAU);
+          ctx.fillStyle = "#f5fbff";
+          ctx.shadowBlur = 18;
+          ctx.shadowColor = "#7ce9ff";
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(state.ball.x - 3, state.ball.y - 3, state.ball.radius * 0.42, 0, TAU);
+          ctx.fillStyle = "rgba(106, 242, 255, 0.55)";
+          ctx.fill();
+          ctx.restore();
+        }
+
+        function renderCenterLabel() {
+          ctx.save();
+          ctx.textAlign = "center";
+          ctx.fillStyle = "rgba(220, 231, 255, 0.82)";
+          ctx.font = "700 18px Trebuchet MS";
+          ctx.fillText(`LEVEL ${state.level}`, center.x, center.y - 6);
+          ctx.fillStyle = "rgba(150, 168, 214, 0.72)";
+          ctx.font = "13px Trebuchet MS";
+          ctx.fillText("Rotate to survive the gaps", center.x, center.y + 18);
+          ctx.restore();
+        }
+
+        function render() {
+          renderBackground();
+          renderArena();
+          renderParticles();
+          renderBall();
+          renderCenterLabel();
+        }
+
+        function frame(now) {
+          if (!frame.lastTime) frame.lastTime = now;
+          const deltaSeconds = Math.min(0.032, (now - frame.lastTime) / 1000);
+          const frameScale = deltaSeconds * 60;
+          frame.lastTime = now;
+
+          if (state.status === "playing") {
+            state.rotation += shortestAngleDelta(state.rotation, state.targetRotation) * 0.12 * frameScale;
+            updateBall(frameScale);
+            updateParticles(frameScale);
+            state.flash = Math.max(0, state.flash - 0.02 * frameScale);
+          }
+
+          scheduleMusic();
+          render();
+          requestAnimationFrame(frame);
+        }
+
+        window.addEventListener("mousemove", (event) => {
+          const rect = canvas.getBoundingClientRect();
+          const centerX = rect.left + rect.width * 0.5;
+          const centerY = rect.top + rect.height * 0.52;
+          const dx = event.clientX - centerX;
+          const dy = event.clientY - centerY;
+
+          if (Math.hypot(dx, dy) < 6) {
+            return;
+          }
+
+          state.targetRotation = Math.atan2(dy, dx);
+        });
+
+        musicButton.addEventListener("click", () => {
+          audioState.musicEnabled = !audioState.musicEnabled;
+          unlockAudio();
+          if (audioState.musicGain) {
+            const time = audioState.context.currentTime;
+            audioState.musicGain.gain.cancelScheduledValues(time);
+            audioState.musicGain.gain.setTargetAtTime(audioState.musicEnabled ? 0.18 : 0.0001, time, 0.08);
+            if (audioState.musicEnabled) {
+              audioState.nextNoteTime = Math.max(audioState.nextNoteTime, time + 0.06);
+              scheduleMusic();
+            }
+          }
+          updateAudioButtons();
+        });
+
+        sfxButton.addEventListener("click", () => {
+          audioState.sfxEnabled = !audioState.sfxEnabled;
+          unlockAudio();
+          playRestartSound();
+          updateAudioButtons();
+        });
+
+        window.addEventListener(
+          "pointerdown",
+          () => {
+            unlockAudio();
+          },
+          { passive: true }
+        );
+
+        restartButton.addEventListener("click", () => {
+          if (state.status === "ready") {
+            startGame();
+            return;
+          }
+          restartGame();
+        });
+
+        buildSegments(state.segmentCount);
+        updateAudioButtons();
+        updateHud();
+        requestAnimationFrame(frame);
+      })();
+    </script>
+  </body>
+</html>
